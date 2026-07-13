@@ -1,9 +1,10 @@
 // app/gallery/[slug]/page.tsx
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { getMediaItem, getMetafieldValue } from '@/lib/cosmic'
+import { getMediaItem, getMediaItemsByFolder, getMetafieldValue } from '@/lib/cosmic'
 import MediaTypeBadge from '@/components/MediaTypeBadge'
 import { formatDate } from '@/lib/format'
+import type { MediaItem } from '@/types'
 
 export default async function MediaItemPage({
   params,
@@ -25,6 +26,21 @@ export default async function MediaItemPage({
   const folder = item.metadata?.folder
   const uploadedBy = item.metadata?.uploaded_by
   const dateTaken = formatDate(item.metadata?.date_taken)
+
+  // Determine previous / next items within the same folder (if any)
+  let prevItem: MediaItem | null = null
+  let nextItem: MediaItem | null = null
+  if (folder?.id) {
+    const siblings = await getMediaItemsByFolder(folder.id)
+    const currentIndex = siblings.findIndex((sibling) => sibling.id === item.id)
+    if (currentIndex !== -1) {
+      prevItem = currentIndex > 0 ? siblings[currentIndex - 1] ?? null : null
+      nextItem =
+        currentIndex < siblings.length - 1
+          ? siblings[currentIndex + 1] ?? null
+          : null
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -66,6 +82,51 @@ export default async function MediaItemPage({
           </div>
         )}
       </div>
+
+      {(prevItem || nextItem) && (
+        <nav
+          aria-label="Media navigation"
+          className="mt-6 flex items-stretch justify-between gap-4"
+        >
+          {prevItem ? (
+            <Link
+              href={`/gallery/${prevItem.slug}`}
+              className="group flex flex-1 items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 transition-colors hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="text-brand-600 text-lg">←</span>
+              <span className="min-w-0">
+                <span className="block text-xs uppercase tracking-wide text-gray-400">
+                  Previous
+                </span>
+                <span className="block truncate text-sm font-medium text-gray-900">
+                  {getMetafieldValue(prevItem.metadata?.title) || prevItem.title}
+                </span>
+              </span>
+            </Link>
+          ) : (
+            <span className="flex-1" aria-hidden="true" />
+          )}
+
+          {nextItem ? (
+            <Link
+              href={`/gallery/${nextItem.slug}`}
+              className="group flex flex-1 items-center justify-end gap-3 rounded-xl border border-gray-200 px-4 py-3 text-right transition-colors hover:border-brand-300 hover:bg-brand-50"
+            >
+              <span className="min-w-0">
+                <span className="block text-xs uppercase tracking-wide text-gray-400">
+                  Next
+                </span>
+                <span className="block truncate text-sm font-medium text-gray-900">
+                  {getMetafieldValue(nextItem.metadata?.title) || nextItem.title}
+                </span>
+              </span>
+              <span className="text-brand-600 text-lg">→</span>
+            </Link>
+          ) : (
+            <span className="flex-1" aria-hidden="true" />
+          )}
+        </nav>
+      )}
 
       <div className="mt-8">
         <div className="flex items-center gap-3">
