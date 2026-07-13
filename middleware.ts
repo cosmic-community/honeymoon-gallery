@@ -6,8 +6,9 @@ const AUTH_CODE = process.env.AUTH_CODE || 'Spiro1010'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Always allow the login page and its POST handler
+  // Always allow the login page and auth API routes
   if (pathname === '/login') return NextResponse.next()
+  if (pathname.startsWith('/api/auth/')) return NextResponse.next()
 
   // Always allow static assets and Next internals
   if (
