@@ -50,7 +50,8 @@ export default function UploadZone({ folders = [], contributors = [] }: UploadZo
         caption: '',
         folderId: globalFolderId,
         contributorId: globalContributorId,
-        dateTaken: new Date().toISOString().split('T')[0],
+        // split('T')[0] is string | undefined under noUncheckedIndexedAccess
+        dateTaken: new Date().toISOString().split('T')[0] ?? '',
         status: 'idle',
       }))
       setItems((prev) => [...prev, ...newItems])
@@ -82,7 +83,9 @@ export default function UploadZone({ folders = [], contributors = [] }: UploadZo
     })
 
     for (let i = 0; i < items.length; i++) {
+      // Guard: items[i] is UploadItem | undefined under noUncheckedIndexedAccess
       const item = items[i]
+      if (!item) continue
       if (item.status !== 'idle') continue
 
       updateItem(i, { status: 'uploading' })
