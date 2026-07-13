@@ -1,45 +1,61 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cosmic } from '@/lib/cosmic'
 
+/**
+ * Creates a media-items object for a file that has ALREADY been uploaded
+ * to the Cosmic media library directly from the browser.
+ *
+ * The file bytes are no longer sent through this route (that would hit
+ * Vercel's 4.5MB request-body limit). The browser uploads the bytes via
+ * cosmic.media.insertOne() and then posts the resulting media name plus
+ * lightweight metadata here as JSON.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData()
-    const file = formData.get('file') as File | null
-    const title = formData.get('title') as string | null
-    const caption = formData.get('caption') as string | null
-    const folderId = formData.get('folderId') as string | null
-    const folderSlug = formData.get('folderSlug') as string | null
-    const mediaType = formData.get('mediaType') as string | null
-    const dateTaken = formData.get('dateTaken') as string | null
+    const body = (await request.json()) as {
+      mediaName?: string
+      title?: string
+      caption?: string
+      folderSlug?: string
+      mediaType?: string
+      dateTaken?: string
+      originalName?: string
+    }
 
-    if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 })
+    const {
+      mediaName,
+      title,
+      caption,
+      folderSlug,
+      mediaType,
+      dateTaken,
+      originalName,
+    } = body
 
-    // Upload to Cosmic media library
-    const arrayBuffer = await file.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
+    if (!mediaName) {
+      return NextResponse.json(
+        { error: 'Missing uploaded media name' },
+        { status: 400 }
+      )
+    }
 
-    // Use the Cosmic SDK media upload
-    const mediaRes = await cosmic.media.insertOne({
-      media: {
-        originalname: file.name,
-        buffer,
-      },
-    })
+    const type = mediaType || 'Photo'
 
-    const uploadedMedia = (mediaRes as unknown as { media: { name: string; url: string; imgix_url: string } }).media
+    const baseName = title || originalName?.replace(/\.[^.]+$/, '') || 'Untitled'
+    const itemTitle = baseName
+    const slug =
+      itemTitle
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') +
+      '-' +
+      Date.now()
 
-    // Determine media type from MIME
-    const type = mediaType || (file.type.startsWith('video/') ? 'Video' : 'Photo')
-
-    // Create a media-item object
-    const itemTitle = title || file.name.replace(/\.[^.]+$/, '')
-    const slug = itemTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
-
-    // For Cosmic 'file' type metafields, the value must be the media name (not a URL)
+    // For Cosmic 'file' type metafields, the value must be the media name.
     const metadata: Record<string, unknown> = {
       title: itemTitle,
       media_type: type,
-      media_file: uploadedMedia.name,
+      media_file: mediaName,
       caption: caption || '',
       date_taken: dateTaken || new Date().toISOString().split('T')[0],
     }
@@ -58,15 +74,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ mediaItem: objRes.object }, { status: 201 })
   } catch (err: unknown) {
-    console.error('Upload error:', err)
+    console.error('Create media-item error:', err)
     const cosmicErr = err as { status?: number; message?: string }
     return NextResponse.json(
-      { error: cosmicErr.message || 'Upload failed', status: cosmicErr.status },
+      { error: cosmicErr.message || 'Failed to create media item', status: cosmicErr.status },
       { status: cosmicErr.status || 500 }
     )
   }
-}
-
-export const config = {
-  api: { bodyParser: false },
 }
