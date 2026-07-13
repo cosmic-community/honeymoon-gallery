@@ -34,7 +34,7 @@ export default function Header() {
               href="/admin"
               className="text-sm font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors px-4 py-1.5 rounded-full"
             >
-              ⬆️ Upload
+              Upload
             </Link>
           </nav>
         </div>

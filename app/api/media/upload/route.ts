@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
       title?: string
       caption?: string
       folderId?: string
+      contributorId?: string
       mediaType?: string
       dateTaken?: string
       originalName?: string
@@ -28,6 +29,7 @@ export async function POST(request: NextRequest) {
       title,
       caption,
       folderId,
+      contributorId,
       mediaType,
       dateTaken,
       originalName,
@@ -64,6 +66,11 @@ export async function POST(request: NextRequest) {
     // For an 'object' type metafield Cosmic expects the related object's id.
     if (folderId) {
       metadata.folder = folderId
+    }
+
+    // uploaded_by is an 'object' metafield pointing to contributors type.
+    if (contributorId) {
+      metadata.uploaded_by = contributorId
     }
 
     const objRes = await cosmic.objects.insertOne({
