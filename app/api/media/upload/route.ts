@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { cosmic } from '@/lib/cosmic'
 
 /**
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
       mediaName?: string
       title?: string
       caption?: string
-      folderSlug?: string
+      folderId?: string
       mediaType?: string
       dateTaken?: string
       originalName?: string
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
       mediaName,
       title,
       caption,
-      folderSlug,
+      folderId,
       mediaType,
       dateTaken,
       originalName,
@@ -60,8 +61,9 @@ export async function POST(request: NextRequest) {
       date_taken: dateTaken || new Date().toISOString().split('T')[0],
     }
 
-    if (folderSlug) {
-      metadata.folder = folderSlug
+    // For an 'object' type metafield Cosmic expects the related object's id.
+    if (folderId) {
+      metadata.folder = folderId
     }
 
     const objRes = await cosmic.objects.insertOne({
@@ -69,8 +71,14 @@ export async function POST(request: NextRequest) {
       slug,
       type: 'media-items',
       status: 'published',
+      // Set the object thumbnail to the uploaded media so it shows in lists.
+      thumbnail: mediaName,
       metadata,
     })
+
+    // Refresh the home page (and gallery) so the new media appears without a hard reload.
+    revalidatePath('/')
+    revalidatePath('/gallery')
 
     return NextResponse.json({ mediaItem: objRes.object }, { status: 201 })
   } catch (err: unknown) {

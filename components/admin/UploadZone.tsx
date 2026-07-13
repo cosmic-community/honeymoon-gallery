@@ -90,7 +90,8 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
             caption: item.caption,
             dateTaken: item.dateTaken,
             mediaType,
-            folderSlug: folder?.slug,
+            // For an 'object' type metafield Cosmic expects the object id, not the slug.
+            folderId: folder?.id,
           }),
         })
         if (!res.ok) {

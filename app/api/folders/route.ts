@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { cosmic } from '@/lib/cosmic'
 
 // GET /api/folders  — list all folders
@@ -32,6 +33,11 @@ export async function POST(request: NextRequest) {
       status: 'published',
       metadata: { description, location, date },
     })
+
+    // Refresh the home page and folders listing so the new folder appears immediately.
+    revalidatePath('/')
+    revalidatePath('/folders')
+
     return NextResponse.json({ folder: res.object }, { status: 201 })
   } catch {
     return NextResponse.json({ error: 'Failed to create folder' }, { status: 500 })
