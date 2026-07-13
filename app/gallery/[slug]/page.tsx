@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { getMediaItem, getMediaItemsByFolder, getMetafieldValue } from '@/lib/cosmic'
 import MediaTypeBadge from '@/components/MediaTypeBadge'
 import MediaWithSkeleton from '@/components/MediaWithSkeleton'
+import MediaKeyboardNav from '@/components/MediaKeyboardNav'
 import { formatDate } from '@/lib/format'
 import type { MediaItem } from '@/types'
 
@@ -45,6 +46,12 @@ export default async function MediaItemPage({
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      {/* Keyboard arrow-key navigation between siblings */}
+      <MediaKeyboardNav
+        prevSlug={prevItem?.slug ?? null}
+        nextSlug={nextItem?.slug ?? null}
+      />
+
       <div className="mb-6 flex items-center gap-3 text-sm">
         <Link href="/gallery" className="text-brand-600 hover:text-brand-700">
           ← Gallery
@@ -62,7 +69,15 @@ export default async function MediaItemPage({
         )}
       </div>
 
-      <div className="rounded-2xl overflow-hidden bg-gray-900 shadow-xl">
+      {/*
+        The media box reserves space via an aspect-ratio (defaulted in
+        MediaWithSkeleton, then snapped to the media's true ratio on load) so
+        the skeleton and the loaded media occupy the exact same height. This
+        removes the previous layout jump where the 300px skeleton grew to the
+        image's natural height after loading. max-h-[80vh] keeps very tall
+        media in view; the object-contain media letterboxes within the box.
+      */}
+      <div className="rounded-2xl overflow-hidden bg-gray-900 shadow-xl max-h-[80vh] mx-auto">
         {mediaFile ? (
           isVideo ? (
             <MediaWithSkeleton
@@ -71,16 +86,18 @@ export default async function MediaItemPage({
               alt={title}
               controls
               preload="metadata"
-              wrapperClassName="w-full min-h-[300px] max-h-[70vh]"
-              className="w-full max-h-[70vh] object-contain bg-black"
+              aspectRatio={16 / 9}
+              wrapperClassName="w-full max-h-[80vh]"
+              className="w-full h-full max-h-[80vh] object-contain bg-black"
             />
           ) : (
             <MediaWithSkeleton
               isVideo={false}
               src={`${mediaFile.imgix_url}?w=2000&auto=format,compress`}
               alt={title}
-              wrapperClassName="w-full min-h-[300px] max-h-[70vh]"
-              className="w-full max-h-[70vh] object-contain"
+              aspectRatio={3 / 2}
+              wrapperClassName="w-full max-h-[80vh]"
+              className="w-full h-full max-h-[80vh] object-contain"
             />
           )
         ) : (
