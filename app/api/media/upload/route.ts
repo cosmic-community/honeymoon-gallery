@@ -7,7 +7,6 @@ export async function POST(request: NextRequest) {
     const file = formData.get('file') as File | null
     const title = formData.get('title') as string | null
     const caption = formData.get('caption') as string | null
-    const folderId = formData.get('folderId') as string | null
     const folderSlug = formData.get('folderSlug') as string | null
     const mediaType = formData.get('mediaType') as string | null
     const dateTaken = formData.get('dateTaken') as string | null
@@ -18,7 +17,6 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer()
     const buffer = Buffer.from(arrayBuffer)
 
-    // Use the Cosmic SDK media upload
     const mediaRes = await cosmic.media.insertOne({
       media: {
         originalname: file.name,
@@ -26,23 +24,37 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const mediaUrl = (mediaRes as unknown as { media: { url: string; imgix_url: string } }).media
+    const uploadedMedia = (mediaRes as unknown as { media: { url: string; imgix_url: string } }).media
 
-    // Determine media type from MIME
+    // Determine media type from MIME if not provided
     const type = mediaType || (file.type.startsWith('video/') ? 'Video' : 'Photo')
 
-    // Create a media-item object
+    // Build object title and slug
     const itemTitle = title || file.name.replace(/\.[^.]+$/, '')
-    const slug = itemTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
+    const slug =
+      itemTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') +
+      '-' +
+      Date.now()
 
+    // Build metadata — all metafields in the media-items schema
     const metadata: Record<string, unknown> = {
+      // Required text metafield
+      title: itemTitle,
+      // Radio-buttons metafield: 'Photo' | 'Video'
       media_type: type,
-      media_file: mediaUrl.imgix_url || mediaUrl.url,
+      // File metafield: pass the full media object so Cosmic resolves it correctly
+      media_file: {
+        url: uploadedMedia.url,
+        imgix_url: uploadedMedia.imgix_url,
+      },
+      // Textarea metafield
       caption: caption || '',
+      // Date metafield
       date_taken: dateTaken || new Date().toISOString().split('T')[0],
     }
 
-    if (folderId && folderSlug) {
+    // Object relationship: pass slug so Cosmic resolves it to an ObjectId
+    if (folderSlug) {
       metadata.folder = folderSlug
     }
 
