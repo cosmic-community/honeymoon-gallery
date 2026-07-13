@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getMediaItem, getMediaItemsByFolder, getMetafieldValue } from '@/lib/cosmic'
 import MediaTypeBadge from '@/components/MediaTypeBadge'
+import MediaWithSkeleton from '@/components/MediaWithSkeleton'
 import { formatDate } from '@/lib/format'
 import type { MediaItem } from '@/types'
 
@@ -64,15 +65,21 @@ export default async function MediaItemPage({
       <div className="rounded-2xl overflow-hidden bg-gray-900 shadow-xl">
         {mediaFile ? (
           isVideo ? (
-            <video
+            <MediaWithSkeleton
+              isVideo
               src={mediaFile.url}
+              alt={title}
               controls
+              preload="metadata"
+              wrapperClassName="w-full min-h-[300px] max-h-[70vh]"
               className="w-full max-h-[70vh] object-contain bg-black"
             />
           ) : (
-            <img
+            <MediaWithSkeleton
+              isVideo={false}
               src={`${mediaFile.imgix_url}?w=2000&auto=format,compress`}
               alt={title}
+              wrapperClassName="w-full min-h-[300px] max-h-[70vh]"
               className="w-full max-h-[70vh] object-contain"
             />
           )
