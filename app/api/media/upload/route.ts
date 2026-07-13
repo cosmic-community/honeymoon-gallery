@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidatePath } from 'next/cache'
 import { cosmic } from '@/lib/cosmic'
+
+export const dynamic = 'force-dynamic'
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,6 +59,13 @@ export async function POST(request: NextRequest) {
       metadata,
     })
 
+    // Bust the Next.js data cache so the newly uploaded media appears immediately
+    revalidatePath('/gallery')
+    revalidatePath('/')
+    if (folderSlug) {
+      revalidatePath(`/folders/${folderSlug}`)
+    }
+
     return NextResponse.json({ mediaItem: objRes.object }, { status: 201 })
   } catch (err: unknown) {
     console.error('Upload error:', err)
@@ -65,8 +75,4 @@ export async function POST(request: NextRequest) {
       { status: cosmicErr.status || 500 }
     )
   }
-}
-
-export const config = {
-  api: { bodyParser: false },
 }

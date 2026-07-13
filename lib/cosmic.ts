@@ -33,6 +33,7 @@ export async function getFolders(): Promise<Folder[]> {
       .find({ type: 'folders' })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     const folders = response.objects as Folder[]
     return folders.sort((a, b) => {
@@ -55,6 +56,7 @@ export async function getFolder(slug: string): Promise<Folder | null> {
       .findOne({ type: 'folders', slug })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     return response.object as Folder
   } catch (error) {
@@ -72,6 +74,7 @@ export async function getMediaItems(): Promise<MediaItem[]> {
       .find({ type: 'media-items' })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     const items = response.objects as MediaItem[]
     return items.sort((a, b) => {
@@ -94,6 +97,7 @@ export async function getMediaItemsByFolder(folderId: string): Promise<MediaItem
       .find({ type: 'media-items', 'metadata.folder': folderId })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     const items = response.objects as MediaItem[]
     return items.sort((a, b) => {
@@ -116,6 +120,7 @@ export async function getMediaItem(slug: string): Promise<MediaItem | null> {
       .findOne({ type: 'media-items', slug })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     return response.object as MediaItem
   } catch (error) {
@@ -167,6 +172,7 @@ export async function getMediaItemsByContributor(contributorId: string): Promise
       .find({ type: 'media-items', 'metadata.uploaded_by': contributorId })
       .props(['id', 'slug', 'title', 'metadata'])
       .depth(1)
+      .options({ cache: 'no-store' })
 
     return response.objects as MediaItem[]
   } catch (error) {
