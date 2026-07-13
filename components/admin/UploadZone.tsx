@@ -1,241 +1,309 @@
 'use client'
 
-import { useState, useRef, DragEvent, ChangeEvent } from 'react'
-import { uploadFileToCosmic } from '@/lib/cosmic-browser'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { createBucketClient } from '@cosmicjs/sdk'
 
 interface Folder {
   id: string
   title: string
   slug: string
-  metadata: Record<string, string>
 }
 
-interface UploadItem {
-  file: File
+interface Contributor {
   id: string
-  preview: string
   title: string
-  caption: string
-  dateTaken: string
+  slug: string
+  metadata: {
+    avatar?: { imgix_url?: string }
+  }
+}
+
+interface UploadFile {
+  file: File
+  preview: string
   status: 'pending' | 'uploading' | 'done' | 'error'
   error?: string
 }
 
-interface UploadZoneProps {
-  folders: Folder[]
-  onUploadComplete: () => void
-}
-
-export default function UploadZone({ folders, onUploadComplete }: UploadZoneProps) {
-  const [items, setItems] = useState<UploadItem[]>([])
+export default function UploadZone() {
+  const [folders, setFolders] = useState<Folder[]>([])
+  const [contributors, setContributors] = useState<Contributor[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string>('')
-  const [isDragging, setIsDragging] = useState(false)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [selectedContributor, setSelectedContributor] = useState<string>('')
+  const [files, setFiles] = useState<UploadFile[]>([])
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  function addFiles(files: FileList | File[]) {
-    const newItems: UploadItem[] = Array.from(files).map(file => ({
-      file,
-      id: Math.random().toString(36).slice(2),
-      preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-      title: file.name.replace(/\.[^.]+$/, ''),
-      caption: '',
-      dateTaken: new Date().toISOString().split('T')[0] ?? '',
-      status: 'pending',
-    }))
-    setItems(prev => [...prev, ...newItems])
-  }
-
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault()
-    setIsDragging(false)
-    if (e.dataTransfer.files) addFiles(e.dataTransfer.files)
-  }
-
-  function handleFileInput(e: ChangeEvent<HTMLInputElement>) {
-    if (e.target.files) addFiles(e.target.files)
-  }
-
-  function updateItem(id: string, patch: Partial<UploadItem>) {
-    setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i))
-  }
-
-  function removeItem(id: string) {
-    setItems(prev => prev.filter(i => i.id !== id))
-  }
-
-  async function uploadAll() {
-    const pending = items.filter(i => i.status === 'pending')
-    if (!pending.length) return
-    setUploading(true)
-
-    const folder = folders.find(f => f.id === selectedFolder)
-
-    for (const item of pending) {
-      updateItem(item.id, { status: 'uploading' })
+  // Load folders and contributors on mount
+  useEffect(() => {
+    async function loadData() {
       try {
-        // 1) Upload the raw bytes straight to Cosmic from the browser.
-        //    No Vercel function in the byte path => no 4.5MB ceiling.
-        const media = await uploadFileToCosmic(item.file)
-
-        // 2) Create the media-items object via our API (tiny JSON call).
-        const mediaType = item.file.type.startsWith('video/') ? 'Video' : 'Photo'
-        const res = await fetch('/api/media/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mediaName: media.name,
-            originalName: item.file.name,
-            title: item.title,
-            caption: item.caption,
-            dateTaken: item.dateTaken,
-            mediaType,
-            // For an 'object' type metafield Cosmic expects the object id, not the slug.
-            folderId: folder?.id,
-          }),
-        })
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.error || 'Failed to save media item')
+        const [foldersRes, contributorsRes] = await Promise.all([
+          fetch('/api/cms/folders'),
+          fetch('/api/cms/contributors'),
+        ])
+        if (foldersRes.ok) {
+          const data = await foldersRes.json()
+          setFolders(data.folders || [])
         }
-        updateItem(item.id, { status: 'done' })
-      } catch (err) {
-        updateItem(item.id, { status: 'error', error: (err as Error).message })
+        if (contributorsRes.ok) {
+          const data = await contributorsRes.json()
+          setContributors(data.contributors || [])
+        }
+      } catch (e) {
+        console.error('Failed to load folders/contributors', e)
       }
     }
-    setUploading(false)
-    onUploadComplete()
+    loadData()
+  }, [])
+
+  const addFiles = useCallback((incoming: FileList | null) => {
+    if (!incoming) return
+    const newFiles: UploadFile[] = Array.from(incoming).map((file) => ({
+      file,
+      preview: file.type.startsWith('image/')
+        ? URL.createObjectURL(file)
+        : '',
+      status: 'pending',
+    }))
+    setFiles((prev) => [...prev, ...newFiles])
+  }, [])
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault()
+      setDragging(false)
+      addFiles(e.dataTransfer.files)
+    },
+    [addFiles]
+  )
+
+  async function uploadAll() {
+    if (files.length === 0) return
+
+    // Fetch upload config (bucket slug + write key) from auth-gated endpoint
+    const configRes = await fetch('/api/media/upload-config')
+    if (!configRes.ok) {
+      alert('Could not fetch upload credentials. Are you logged in?')
+      return
+    }
+    const { bucketSlug, writeKey } = await configRes.json()
+
+    const cosmic = createBucketClient({
+      bucketSlug,
+      writeKey,
+    })
+
+    for (let i = 0; i < files.length; i++) {
+      const entry = files[i]
+      if (entry.status === 'done') continue
+
+      setFiles((prev) =>
+        prev.map((f, idx) => (idx === i ? { ...f, status: 'uploading' } : f))
+      )
+
+      try {
+        // 1. Upload bytes directly to Cosmic media library
+        const arrayBuffer = await entry.file.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+
+        const mediaRes = await cosmic.media.insertOne({
+          media: {
+            originalname: entry.file.name,
+            buffer,
+          },
+        })
+
+        const uploadedMedia = (mediaRes as any).media
+        const mediaName: string = uploadedMedia?.name || entry.file.name
+        const imgixUrl: string = uploadedMedia?.imgix_url || ''
+
+        // 2. Determine media type
+        const isVideo = entry.file.type.startsWith('video/')
+        const mediaType = isVideo ? 'Video' : 'Image'
+
+        // 3. Build thumbnail: for images use imgix_url with resize params,
+        //    for videos use the imgix_url of the uploaded media (Cosmic
+        //    generates a poster frame for videos via imgix)
+        const thumbnail = imgixUrl
+          ? `${imgixUrl}?w=400&h=400&fit=crop&auto=format,compress`
+          : ''
+
+        // 4. Post metadata to server — creates the media-items object
+        const body: Record<string, string> = {
+          mediaName,
+          mediaType,
+          thumbnail,
+          title: entry.file.name.replace(/\.[^.]+$/, ''),
+        }
+        if (selectedFolder) body.folderId = selectedFolder
+        if (selectedContributor) body.contributorSlug = selectedContributor
+
+        const metaRes = await fetch('/api/media/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        })
+
+        if (!metaRes.ok) {
+          throw new Error(`Metadata save failed: ${metaRes.status}`)
+        }
+
+        setFiles((prev) =>
+          prev.map((f, idx) => (idx === i ? { ...f, status: 'done' } : f))
+        )
+      } catch (err: any) {
+        setFiles((prev) =>
+          prev.map((f, idx) =>
+            idx === i
+              ? { ...f, status: 'error', error: err?.message || 'Upload failed' }
+              : f
+          )
+        )
+      }
+    }
+
+    // 5. Revalidate home page + gallery so new media appears immediately
+    await fetch('/api/revalidate', { method: 'POST' })
   }
 
-  const pendingCount = items.filter(i => i.status === 'pending').length
+  function removeFile(i: number) {
+    setFiles((prev) => prev.filter((_, idx) => idx !== i))
+  }
+
+  const allDone = files.length > 0 && files.every((f) => f.status === 'done')
+  const anyUploading = files.some((f) => f.status === 'uploading')
 
   return (
     <div className="space-y-6">
       {/* Folder selector */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Upload to folder:</label>
-        <select
-          value={selectedFolder}
-          onChange={e => setSelectedFolder(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-        >
-          <option value="">No folder (ungrouped)</option>
-          {folders.map(f => (
-            <option key={f.id} value={f.id}>{f.title}</option>
-          ))}
-        </select>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Folder
+          </label>
+          <select
+            value={selectedFolder}
+            onChange={(e) => setSelectedFolder(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+          >
+            <option value="">No folder</option>
+            {folders.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.title}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Contributor selector */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Uploaded by
+          </label>
+          <select
+            value={selectedContributor}
+            onChange={(e) => setSelectedContributor(e.target.value)}
+            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+          >
+            <option value="">Select contributor…</option>
+            {contributors.map((c) => (
+              <option key={c.id} value={c.slug}>
+                {c.title}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Drop zone */}
       <div
-        onDragOver={e => { e.preventDefault(); setIsDragging(true) }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
-        className={`relative border-2 border-dashed rounded-2xl p-12 text-center cursor-pointer transition-all ${
-          isDragging
+        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`relative flex flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed p-12 cursor-pointer transition-colors ${
+          dragging
             ? 'border-rose-400 bg-rose-50'
-            : 'border-gray-200 hover:border-rose-300 hover:bg-rose-50/30'
+            : 'border-gray-200 bg-gray-50 hover:border-rose-300 hover:bg-rose-50/50'
         }`}
       >
         <input
-          ref={fileInputRef}
+          ref={inputRef}
           type="file"
           multiple
           accept="image/*,video/*"
           className="hidden"
-          onChange={handleFileInput}
+          onChange={(e) => addFiles(e.target.files)}
         />
-        <div className="text-4xl mb-3">📁</div>
-        <p className="text-gray-600 font-medium">Drag &amp; drop photos or videos here</p>
-        <p className="text-gray-400 text-sm mt-1">or click to browse files</p>
-        <p className="text-gray-300 text-xs mt-3">Supports JPG, PNG, GIF, WEBP, MP4, MOV, and more — large files welcome</p>
+        <div className="text-4xl">📁</div>
+        <p className="text-sm font-medium text-gray-600">
+          Drop photos & videos here, or click to browse
+        </p>
+        <p className="text-xs text-gray-400">Images and videos of any size</p>
       </div>
 
       {/* File list */}
-      {items.length > 0 && (
-        <div className="space-y-3">
-          {items.map(item => (
-            <div
-              key={item.id}
-              className={`flex gap-4 items-start bg-gray-50 rounded-xl p-4 border ${
-                item.status === 'done' ? 'border-green-200 bg-green-50' :
-                item.status === 'error' ? 'border-red-200 bg-red-50' :
-                item.status === 'uploading' ? 'border-rose-200 bg-rose-50' :
-                'border-gray-100'
-              }`}
+      {files.length > 0 && (
+        <ul className="space-y-2">
+          {files.map((entry, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-3 rounded-xl border border-gray-100 bg-white px-4 py-3"
             >
-              {/* Preview */}
-              <div className="w-16 h-16 rounded-lg overflow-hidden bg-gray-200 flex-shrink-0 flex items-center justify-center">
-                {item.preview
-                  ? <img src={item.preview} alt="" className="w-full h-full object-cover" />
-                  : <span className="text-2xl">🎬</span>
-                }
-              </div>
-
-              {/* Fields */}
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input
-                  type="text"
-                  value={item.title}
-                  onChange={e => updateItem(item.id, { title: e.target.value })}
-                  placeholder="Title"
-                  disabled={item.status !== 'pending'}
-                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-60"
+              {entry.preview ? (
+                <img
+                  src={entry.preview}
+                  alt=""
+                  className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
                 />
-                <input
-                  type="text"
-                  value={item.caption}
-                  onChange={e => updateItem(item.id, { caption: e.target.value })}
-                  placeholder="Caption (optional)"
-                  disabled={item.status !== 'pending'}
-                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-60"
-                />
-                <input
-                  type="date"
-                  value={item.dateTaken}
-                  onChange={e => updateItem(item.id, { dateTaken: e.target.value })}
-                  disabled={item.status !== 'pending'}
-                  className="border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300 disabled:opacity-60"
-                />
-              </div>
-
-              {/* Status / remove */}
-              <div className="flex flex-col items-end gap-1">
-                {item.status === 'pending' && (
-                  <button onClick={() => removeItem(item.id)} className="text-gray-300 hover:text-red-400 text-lg">✕</button>
-                )}
-                {item.status === 'uploading' && <span className="text-xs text-rose-500 font-medium">Uploading…</span>}
-                {item.status === 'done' && <span className="text-xs text-green-600 font-medium">✓ Done</span>}
-                {item.status === 'error' && (
-                  <span className="text-xs text-red-500 font-medium" title={item.error}>✗ Error</span>
-                )}
-              </div>
-            </div>
+              ) : (
+                <div className="h-10 w-10 rounded-lg bg-gray-100 flex items-center justify-center flex-shrink-0 text-lg">
+                  🎬
+                </div>
+              )}
+              <span className="flex-1 text-sm text-gray-700 truncate">
+                {entry.file.name}
+              </span>
+              <span className="text-xs text-gray-400">
+                {(entry.file.size / 1024 / 1024).toFixed(1)} MB
+              </span>
+              {entry.status === 'pending' && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeFile(i) }}
+                  className="text-gray-300 hover:text-red-400 text-lg leading-none"
+                >
+                  ×
+                </button>
+              )}
+              {entry.status === 'uploading' && (
+                <span className="text-xs text-rose-500 animate-pulse">Uploading…</span>
+              )}
+              {entry.status === 'done' && (
+                <span className="text-xs text-green-500">✓ Done</span>
+              )}
+              {entry.status === 'error' && (
+                <span className="text-xs text-red-500" title={entry.error}>✗ Error</span>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
       {/* Upload button */}
-      {pendingCount > 0 && (
+      {files.length > 0 && !allDone && (
         <button
           onClick={uploadAll}
-          disabled={uploading}
-          className="w-full bg-rose-500 hover:bg-rose-600 disabled:opacity-50 text-white font-semibold rounded-xl py-3 transition-colors"
+          disabled={anyUploading}
+          className="w-full rounded-full bg-rose-500 py-3 text-sm font-semibold text-white hover:bg-rose-600 disabled:opacity-50 transition-colors"
         >
-          {uploading ? 'Uploading…' : `Upload ${pendingCount} file${pendingCount > 1 ? 's' : ''}`}
+          {anyUploading ? 'Uploading…' : `Upload ${files.filter(f => f.status !== 'done').length} file(s)`}
         </button>
       )}
 
-      {items.every(i => i.status === 'done') && items.length > 0 && (
-        <div className="text-center">
-          <p className="text-green-600 font-medium mb-3">🎉 All uploads complete!</p>
-          <button
-            onClick={() => setItems([])}
-            className="text-sm text-gray-400 hover:text-gray-600 underline"
-          >
-            Clear and upload more
-          </button>
+      {allDone && (
+        <div className="rounded-xl bg-green-50 border border-green-200 px-4 py-3 text-sm text-green-700 text-center font-medium">
+          All files uploaded successfully!
         </div>
       )}
     </div>
