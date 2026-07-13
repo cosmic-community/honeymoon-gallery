@@ -6,10 +6,17 @@ import FolderManager from './FolderManager'
 
 type Tab = 'upload' | 'folders'
 
+interface Contributor {
+  id: string
+  title: string
+  slug: string
+  metadata: Record<string, string>
+}
+
 export default function AdminPanel() {
   const [tab, setTab] = useState<Tab>('upload')
-  const [folders, setFolders] = useState<Array<{ id: string; title: string; slug: string; metadata: Record<string, string> }>>([]
-  )
+  const [folders, setFolders] = useState<Array<{ id: string; title: string; slug: string; metadata: Record<string, string> }>>([])
+  const [contributors, setContributors] = useState<Contributor[]>([])
 
   async function loadFolders() {
     const res = await fetch('/api/folders')
@@ -17,7 +24,16 @@ export default function AdminPanel() {
     setFolders(data.folders || [])
   }
 
-  useEffect(() => { loadFolders() }, [])
+  async function loadContributors() {
+    const res = await fetch('/api/contributors')
+    const data = await res.json()
+    setContributors(data.contributors || [])
+  }
+
+  useEffect(() => {
+    loadFolders()
+    loadContributors()
+  }, [])
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -54,8 +70,16 @@ export default function AdminPanel() {
         ))}
       </div>
 
-      {tab === 'upload' && <UploadZone folders={folders} onUploadComplete={loadFolders} />}
-      {tab === 'folders' && <FolderManager folders={folders} onFoldersChange={loadFolders} />}
+      {tab === 'upload' && (
+        <UploadZone
+          folders={folders}
+          contributors={contributors}
+          onUploadComplete={loadFolders}
+        />
+      )}
+      {tab === 'folders' && (
+        <FolderManager folders={folders} onFoldersChange={loadFolders} />
+      )}
     </div>
   )
 }

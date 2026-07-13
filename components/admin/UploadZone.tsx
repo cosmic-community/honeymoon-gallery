@@ -10,6 +10,13 @@ interface Folder {
   metadata: Record<string, string>
 }
 
+interface Contributor {
+  id: string
+  title: string
+  slug: string
+  metadata: Record<string, string>
+}
+
 interface UploadItem {
   file: File
   id: string
@@ -23,12 +30,14 @@ interface UploadItem {
 
 interface UploadZoneProps {
   folders: Folder[]
+  contributors: Contributor[]
   onUploadComplete: () => void
 }
 
-export default function UploadZone({ folders, onUploadComplete }: UploadZoneProps) {
+export default function UploadZone({ folders, contributors, onUploadComplete }: UploadZoneProps) {
   const [items, setItems] = useState<UploadItem[]>([])
   const [selectedFolder, setSelectedFolder] = useState<string>('')
+  const [selectedContributor, setSelectedContributor] = useState<string>('')
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -90,8 +99,8 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
             caption: item.caption,
             dateTaken: item.dateTaken,
             mediaType,
-            // For an 'object' type metafield Cosmic expects the object id, not the slug.
             folderId: folder?.id,
+            contributorId: selectedContributor || undefined,
           }),
         })
         if (!res.ok) {
@@ -111,19 +120,35 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
 
   return (
     <div className="space-y-6">
-      {/* Folder selector */}
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Upload to folder:</label>
-        <select
-          value={selectedFolder}
-          onChange={e => setSelectedFolder(e.target.value)}
-          className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
-        >
-          <option value="">No folder (ungrouped)</option>
-          {folders.map(f => (
-            <option key={f.id} value={f.id}>{f.title}</option>
-          ))}
-        </select>
+      {/* Folder + Contributor selectors */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Upload to folder:</label>
+          <select
+            value={selectedFolder}
+            onChange={e => setSelectedFolder(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+          >
+            <option value="">No folder (ungrouped)</option>
+            {folders.map(f => (
+              <option key={f.id} value={f.id}>{f.title}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700 whitespace-nowrap">Uploaded by:</label>
+          <select
+            value={selectedContributor}
+            onChange={e => setSelectedContributor(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+          >
+            <option value="">Select contributor…</option>
+            {contributors.map(c => (
+              <option key={c.id} value={c.id}>{c.title}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {/* Drop zone */}
