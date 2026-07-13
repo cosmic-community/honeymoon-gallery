@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, DragEvent, ChangeEvent } from 'react'
+import { uploadFileToCosmic } from '@/lib/cosmic-browser'
 
 interface Folder {
   id: string
@@ -73,17 +74,29 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
     for (const item of pending) {
       updateItem(item.id, { status: 'uploading' })
       try {
-        const fd = new FormData()
-        fd.append('file', item.file)
-        fd.append('title', item.title)
-        fd.append('caption', item.caption)
-        fd.append('dateTaken', item.dateTaken)
-        if (folder) {
-          fd.append('folderId', folder.id)
-          fd.append('folderSlug', folder.slug)
+        // 1) Upload the raw bytes straight to Cosmic from the browser.
+        //    No Vercel function in the byte path => no 4.5MB ceiling.
+        const media = await uploadFileToCosmic(item.file)
+
+        // 2) Create the media-items object via our API (tiny JSON call).
+        const mediaType = item.file.type.startsWith('video/') ? 'Video' : 'Photo'
+        const res = await fetch('/api/media/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mediaName: media.name,
+            originalName: item.file.name,
+            title: item.title,
+            caption: item.caption,
+            dateTaken: item.dateTaken,
+            mediaType,
+            folderSlug: folder?.slug,
+          }),
+        })
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.error || 'Failed to save media item')
         }
-        const res = await fetch('/api/media/upload', { method: 'POST', body: fd })
-        if (!res.ok) throw new Error(await res.text())
         updateItem(item.id, { status: 'done' })
       } catch (err) {
         updateItem(item.id, { status: 'error', error: (err as Error).message })
@@ -133,9 +146,9 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
           onChange={handleFileInput}
         />
         <div className="text-4xl mb-3">📁</div>
-        <p className="text-gray-600 font-medium">Drag & drop photos or videos here</p>
+        <p className="text-gray-600 font-medium">Drag &amp; drop photos or videos here</p>
         <p className="text-gray-400 text-sm mt-1">or click to browse files</p>
-        <p className="text-gray-300 text-xs mt-3">Supports JPG, PNG, GIF, WEBP, MP4, MOV, and more</p>
+        <p className="text-gray-300 text-xs mt-3">Supports JPG, PNG, GIF, WEBP, MP4, MOV, and more — large files welcome</p>
       </div>
 
       {/* File list */}
@@ -193,7 +206,9 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
                 )}
                 {item.status === 'uploading' && <span className="text-xs text-rose-500 font-medium">Uploading…</span>}
                 {item.status === 'done' && <span className="text-xs text-green-600 font-medium">✓ Done</span>}
-                {item.status === 'error' && <span className="text-xs text-red-500 font-medium">✗ Error</span>}
+                {item.status === 'error' && (
+                  <span className="text-xs text-red-500 font-medium" title={item.error}>✗ Error</span>
+                )}
               </div>
             </div>
           ))}
