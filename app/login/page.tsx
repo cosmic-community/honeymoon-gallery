@@ -1,11 +1,10 @@
 'use client'
 
 import { useState, FormEvent } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Suspense } from 'react'
 
 function LoginForm() {
-  const router = useRouter()
   const params = useSearchParams()
   const from = params.get('from') || '/'
   const [code, setCode] = useState('')
@@ -22,8 +21,11 @@ function LoginForm() {
       body: JSON.stringify({ code }),
     })
     if (res.ok) {
-      router.push(from)
-      router.refresh()
+      // Full-document navigation so the browser sends the freshly-set
+      // hg_auth cookie and middleware evaluates it on a clean request.
+      // A soft router.push() can race the Set-Cookie commit and get
+      // bounced back to /login.
+      window.location.assign(from)
     } else {
       setError('Incorrect access code. Please try again.')
       setLoading(false)
