@@ -87,15 +87,17 @@ export default function UploadZone() {
       alert('Could not fetch upload credentials. Are you logged in?')
       return
     }
-    const { bucketSlug, writeKey } = await configRes.json()
+    const { bucketSlug, writeKey, readKey } = await configRes.json()
 
     const cosmic = createBucketClient({
       bucketSlug,
       writeKey,
+      readKey: readKey ?? '',
     })
 
     for (let i = 0; i < files.length; i++) {
       const entry = files[i]
+      if (!entry) continue
       if (entry.status === 'done') continue
 
       setFiles((prev) =>

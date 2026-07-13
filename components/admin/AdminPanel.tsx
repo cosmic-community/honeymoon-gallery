@@ -54,7 +54,7 @@ export default function AdminPanel() {
         ))}
       </div>
 
-      {tab === 'upload' && <UploadZone folders={folders} onUploadComplete={loadFolders} />}
+      {tab === 'upload' && <UploadZone />}
       {tab === 'folders' && <FolderManager folders={folders} onFoldersChange={loadFolders} />}
     </div>
   )
