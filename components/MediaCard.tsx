@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { MediaItem } from '@/types'
 import { getMetafieldValue } from '@/lib/cosmic'
 import MediaTypeBadge from '@/components/MediaTypeBadge'
+import MediaWithSkeleton from '@/components/MediaWithSkeleton'
 
 interface MediaCardProps {
   item: MediaItem
@@ -21,12 +22,15 @@ export default function MediaCard({ item }: MediaCardProps) {
       {mediaFile ? (
         isVideo ? (
           <div className="relative w-full h-full">
-            <video
+            <MediaWithSkeleton
+              isVideo
               src={mediaFile.url}
-              className="w-full h-full object-cover"
+              alt={title}
               muted
               playsInline
               preload="metadata"
+              wrapperClassName="w-full h-full"
+              className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="w-12 h-12 rounded-full bg-white/80 flex items-center justify-center text-xl">
@@ -35,11 +39,13 @@ export default function MediaCard({ item }: MediaCardProps) {
             </div>
           </div>
         ) : (
-          <img
+          <MediaWithSkeleton
+            isVideo={false}
             src={`${mediaFile.imgix_url}?w=600&h=600&fit=crop&auto=format,compress`}
             alt={title}
             width={300}
             height={300}
+            wrapperClassName="w-full h-full"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
         )
