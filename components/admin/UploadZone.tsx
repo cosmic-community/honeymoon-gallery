@@ -39,8 +39,8 @@ export default function UploadZone({ folders, onUploadComplete }: UploadZoneProp
       preview: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
       title: file.name.replace(/\.[^.]+$/, ''),
       caption: '',
-      dateTaken: new Date().toISOString().split('T')[0],
-      status: 'pending',
+      dateTaken: new Date().toISOString().split('T')[0] ?? '',
+      status: 'pending' as const,
     }))
     setItems(prev => [...prev, ...newItems])
   }
