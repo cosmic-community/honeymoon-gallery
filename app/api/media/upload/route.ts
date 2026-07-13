@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       },
     })
 
-    const mediaUrl = (mediaRes as unknown as { media: { url: string; imgix_url: string } }).media
+    const uploadedMedia = (mediaRes as unknown as { media: { name: string; url: string; imgix_url: string } }).media
 
     // Determine media type from MIME
     const type = mediaType || (file.type.startsWith('video/') ? 'Video' : 'Photo')
@@ -35,14 +35,16 @@ export async function POST(request: NextRequest) {
     const itemTitle = title || file.name.replace(/\.[^.]+$/, '')
     const slug = itemTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') + '-' + Date.now()
 
+    // For Cosmic 'file' type metafields, the value must be the media name (not a URL)
     const metadata: Record<string, unknown> = {
+      title: itemTitle,
       media_type: type,
-      media_file: mediaUrl.imgix_url || mediaUrl.url,
+      media_file: uploadedMedia.name,
       caption: caption || '',
       date_taken: dateTaken || new Date().toISOString().split('T')[0],
     }
 
-    if (folderId && folderSlug) {
+    if (folderSlug) {
       metadata.folder = folderSlug
     }
 
@@ -55,9 +57,13 @@ export async function POST(request: NextRequest) {
     })
 
     return NextResponse.json({ mediaItem: objRes.object }, { status: 201 })
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Upload error:', err)
-    return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
+    const cosmicErr = err as { status?: number; message?: string }
+    return NextResponse.json(
+      { error: cosmicErr.message || 'Upload failed', status: cosmicErr.status },
+      { status: cosmicErr.status || 500 }
+    )
   }
 }
 
