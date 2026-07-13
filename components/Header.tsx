@@ -84,7 +84,7 @@ export default function Header() {
               onClick={closeMenu}
               className="mt-1 text-center text-base font-semibold text-white bg-rose-500 hover:bg-rose-600 transition-colors px-4 py-2.5 rounded-full"
             >
-              ⬆️ Upload
+              Upload
             </Link>
           </div>
         </nav>
